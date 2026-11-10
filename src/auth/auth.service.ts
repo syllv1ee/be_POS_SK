@@ -2,7 +2,6 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as bcrypt from "bcrypt";
-import { User } from "@prisma/client";
 import { StringValue } from "ms";
 
 import { PrismaService } from "../prisma/prisma.service";
@@ -22,6 +21,12 @@ const WITH_ROLE_PERMISSIONS = {
   },
 } as const;
 
+interface RefreshPayload {
+  sub: number;
+  username: string;
+  type?: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -33,11 +38,27 @@ export class AuthService {
    * Login menggunakan username dan password.
    */
   async login(dto: LoginDto) {
-    const username = dto.username?.trim();
-    const password = dto.password;
+    const username =
+      typeof dto?.username === "string"
+        ? dto.username.trim()
+        : "";
+
+    const password =
+      typeof dto?.password === "string"
+        ? dto.password
+        : "";
+
+    // Debug sementara, tanpa mencetak password asli.
+    console.log("[LOGIN DEBUG]", {
+      username: username || "(kosong)",
+      usernameTerisi: Boolean(username),
+      passwordTerisi: Boolean(password),
+    });
 
     if (!username || !password) {
-      throw new UnauthorizedException(AUTH.INVALID_CREDENTIALS);
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
     }
 
     const user = await this.prisma.user.findUnique({
@@ -45,56 +66,65 @@ export class AuthService {
       include: WITH_ROLE_PERMISSIONS,
     });
 
-    // Username tidak ditemukan.
     if (!user) {
       console.warn(
-        `Login gagal: username "${username}" tidak ditemukan.`,
+        `[LOGIN DEBUG] Username "${username}" tidak ditemukan.`,
       );
 
-      throw new UnauthorizedException(AUTH.INVALID_CREDENTIALS);
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
     }
 
-    // Akun tidak aktif.
     if (!user.is_active) {
       console.warn(
-        `Login gagal: akun "${username}" tidak aktif.`,
+        `[LOGIN DEBUG] Akun "${username}" tidak aktif.`,
       );
 
-      throw new UnauthorizedException(AUTH.INVALID_CREDENTIALS);
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
     }
 
-    // Verifikasi password terhadap hash bcrypt.
     const isPasswordValid = await bcrypt.compare(
       password,
       user.password,
     );
 
-    if (!isPasswordValid) {
-      console.warn(
-        `Login gagal: password untuk "${username}" tidak cocok.`,
-      );
+    console.log("[LOGIN DEBUG] Password valid:", isPasswordValid);
 
-      throw new UnauthorizedException(AUTH.INVALID_CREDENTIALS);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
     }
 
-    // Buat access token dan refresh token.
-    const [accessToken, refreshToken] = await Promise.all([
-      this.generateAccessToken(user),
-      this.generateRefreshToken(user),
-    ]);
+    const accessToken = await this.jwtService.signAsync({
+      sub: user.id,
+      username: user.username,
+    });
 
-    // Simpan waktu login dan hash refresh token.
+    const refreshToken = await this.jwtService.signAsync(
+      {
+        sub: user.id,
+        username: user.username,
+        type: "refresh",
+      },
+      {
+        secret: process.env.JWT_REFRESH_SECRET,
+        expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ||
+          "30d") as StringValue,
+      },
+    );
+
+    // Simpan hash refresh token untuk validasi dan pencabutan token.
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        last_login_at: new Date(),
         refresh_token: await bcrypt.hash(refreshToken, 10),
       },
     });
 
-    // Kembalikan user lengkap untuk diproses oleh controller.
-    // Controller harus menghapus password dan refresh_token
-    // sebelum mengirim data user ke client.
     return {
       user,
       accessToken,
@@ -103,21 +133,34 @@ export class AuthService {
   }
 
   /**
-   * Membuat access token baru menggunakan refresh token.
+   * Membuat access token dan refresh token baru.
    */
   async refreshToken(token: string) {
-    if (!token) {
-      throw new UnauthorizedException(AUTH.INVALID_REFRESH_TOKEN);
+    if (!token || !process.env.JWT_REFRESH_SECRET) {
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
     }
 
-    let payload: { sub: number };
+    let payload: RefreshPayload;
 
     try {
-      payload = await this.jwtService.verifyAsync(token, {
-        secret: process.env.JWT_REFRESH_SECRET,
-      });
+      payload = await this.jwtService.verifyAsync<RefreshPayload>(
+        token,
+        {
+          secret: process.env.JWT_REFRESH_SECRET,
+        },
+      );
     } catch {
-      throw new UnauthorizedException(AUTH.INVALID_REFRESH_TOKEN);
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
+    }
+
+    if (!payload.sub || payload.type !== "refresh") {
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
     }
 
     const user = await this.prisma.user.findUnique({
@@ -126,27 +169,47 @@ export class AuthService {
     });
 
     if (!user || !user.is_active || !user.refresh_token) {
-      throw new UnauthorizedException(AUTH.INVALID_REFRESH_TOKEN);
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
     }
 
-    const isTokenValid = await bcrypt.compare(
+    const isRefreshTokenValid = await bcrypt.compare(
       token,
       user.refresh_token,
     );
 
-    if (!isTokenValid) {
-      await this.revokeRefreshToken(user.id);
+    if (!isRefreshTokenValid) {
+      // Cabut token tersimpan jika token yang dikirim tidak cocok.
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { refresh_token: null },
+      });
 
       throw new UnauthorizedException(
-        AUTH.REFRESH_TOKEN_REUSE_DETECTED,
+        AUTH.INVALID_CREDENTIALS,
       );
     }
 
-    const [accessToken, refreshToken] = await Promise.all([
-      this.generateAccessToken(user),
-      this.generateRefreshToken(user),
-    ]);
+    const accessToken = await this.jwtService.signAsync({
+      sub: user.id,
+      username: user.username,
+    });
 
+    const refreshToken = await this.jwtService.signAsync(
+      {
+        sub: user.id,
+        username: user.username,
+        type: "refresh",
+      },
+      {
+        secret: process.env.JWT_REFRESH_SECRET,
+        expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ||
+          "30d") as StringValue,
+      },
+    );
+
+    // Rotasi refresh token: token lama diganti dengan hash token baru.
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
@@ -155,76 +218,43 @@ export class AuthService {
     });
 
     return {
+      user,
       accessToken,
       refreshToken,
     };
   }
 
   /**
-   * Logout dengan mencabut refresh token.
+   * Logout dan cabut refresh token milik user.
    */
-  async logout(userId: number): Promise<void> {
-    await this.revokeRefreshToken(userId);
-  }
-
-  /**
-   * Mengambil data user yang terautentikasi.
-   */
-  async validateUser(userId: number): Promise<AuthenticatedUser> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: WITH_ROLE_PERMISSIONS,
-    });
-
-    if (!user || !user.is_active) {
-      throw new UnauthorizedException(AUTH.USER_NOT_FOUND);
-    }
-
-    return user;
-  }
-
-  /**
-   * Membuat access token.
-   */
-  private generateAccessToken(user: User): Promise<string> {
-    return this.jwtService.signAsync(
-      {
-        sub: user.id,
-        username: user.username,
-      },
-      {
-        secret: process.env.JWT_SECRET,
-        expiresIn: (process.env.JWT_ACCESS_EXPIRES_IN ??
-          "15m") as StringValue,
-      },
-    );
-  }
-
-  /**
-   * Membuat refresh token.
-   */
-  private generateRefreshToken(user: User): Promise<string> {
-    return this.jwtService.signAsync(
-      {
-        sub: user.id,
-      },
-      {
-        secret: process.env.JWT_REFRESH_SECRET,
-        expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ??
-          "30d") as StringValue,
-      },
-    );
-  }
-
-  /**
-   * Mencabut refresh token dari database.
-   */
-  private async revokeRefreshToken(userId: number): Promise<void> {
+  async logout(userId: number) {
     await this.prisma.user.update({
       where: { id: userId },
       data: {
         refresh_token: null,
       },
     });
+
+    return {
+      message: "Logout berhasil",
+    };
+  }
+
+  /**
+   * Validasi user berdasarkan ID dari access token.
+   */
+  async validateUser(
+    userId: number,
+  ): Promise<AuthenticatedUser | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: WITH_ROLE_PERMISSIONS,
+    });
+
+    if (!user || !user.is_active) {
+      return null;
+    }
+
+    return user as unknown as AuthenticatedUser;
   }
 }

@@ -1,0 +1,613 @@
+
+===== prisma\schema.prisma =====
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// AUTH
+
+model Role {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  users           User[]
+  permissionRoles PermissionRole[]
+
+  @@map("role")
+}
+
+model Permission {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  permissionRoles PermissionRole[]
+
+  @@map("permission")
+}
+
+model PermissionRole {
+  permission_id Int
+  role_id       Int
+
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+  role       Role       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+
+  @@id([permission_id, role_id])
+  @@map("permission_role")
+}
+
+model User {
+  id            Int       @id @default(autoincrement())
+  employee_id   Int?      @unique @map("id_karyawan") // 1 karyawan = 1 user
+  role_id       Int
+  username      String    @unique
+  password      String
+  name          String
+  is_active     Boolean   @default(true)
+  refresh_token String?
+  last_login_at DateTime?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  role       Role         @relation(fields: [role_id], references: [id])
+  employee   Employee?    @relation(fields: [employee_id], references: [id])
+  productOut ProductOut[]
+  productIn  ProductIn[]
+
+  @@map("user")
+}
+
+// master
+
+model Employee {
+  id         Int       @id @default(autoincrement())
+  code       String?   @unique @map("kode")
+  name       String    @map("nama")
+  position   String?   @map("jabatan")
+  phone      String?   @map("no_hp")
+  is_active  Boolean?  @default(true) @map("aktif")
+  created_at DateTime? @default(now())
+
+  user                          User?
+  salesKanvasPlans              SalesKanvasPlan[]
+  salesKanvasKasbonProducts     SalesKanvasKasbonProduct[]
+  salesKanvasKasbonOperationals SalesKanvasKasbonOperational[]
+
+  @@map("karyawan")
+}
+
+model MarketArea {
+  id          Int     @id @default(autoincrement())
+  code        String? @unique @map("kode")
+  name        String  @map("nama")
+  description String? @map("keterangan") @db.Text
+
+  outlets          Outlet[]
+  salesKanvasPlans SalesKanvasPlan[]
+
+  @@map("wilayah_kanvas")
+}
+
+model Vehicle {
+  id           Int      @id @default(autoincrement())
+  plate_number String   @unique @map("plat_nomor")
+  type         String?  @map("jenis")
+  description  String?  @map("keterangan") @db.Text
+  is_active    Boolean? @default(true) @map("aktif")
+
+  salesKanvasPlans SalesKanvasPlan[]
+
+  @@map("kendaraan")
+}
+
+model PriceType {
+  id          Int     @id @default(autoincrement())
+  name        String  @map("nama")
+  description String? @map("keterangan") @db.Text
+
+  outlets       Outlet[]
+  productPrices ProductPrice[]
+
+  @@map("tipe_harga")
+}
+
+model Outlet {
+  id               Int      @id @default(autoincrement())
+  code             String?  @unique @map("kode")
+  name             String   @map("nama")
+  address          String?  @map("alamat") @db.Text
+  phone            String?  @map("no_hp")
+  market_area_id   Int?     @map("id_wilayah_kanvas")
+  price_type_id    Int      @map("id_tipe_harga")
+  receivable_limit Decimal? @default(0) @map("limit_piutang") @db.Decimal(15, 2)
+  is_active        Boolean? @default(true) @map("aktif")
+
+  marketArea             MarketArea?             @relation(fields: [market_area_id], references: [id])
+  priceType              PriceType               @relation(fields: [price_type_id], references: [id])
+  salesKanvasPlanOutlets SalesKanvasPlanOutlet[]
+  invoiceOutlets         InvoiceOutlet[]
+  invoiceReturns         InvoiceReturn[]
+  receivableCards        OutletReceivableCard[]
+
+  @@map("outlet")
+}
+
+model Product {
+  id        Int      @id @default(autoincrement())
+  code      String?  @unique @map("kode")
+  name      String   @map("nama")
+  unit      String?  @map("satuan")
+  is_active Boolean? @default(true) @map("aktif")
+
+  prices               ProductPrice[]
+  kasbonProductDetails SalesKanvasKasbonProductDetail[]
+  productOutDetails    ProductOutDetail[]
+  productInDetails     ProductInDetail[]
+  batchMutations       BatchMutation[]
+  invoiceOutletDetails InvoiceOutletDetail[]
+  invoiceReturnDetails InvoiceReturnDetail[]
+
+  @@map("produk")
+}
+
+model ProductPrice {
+  id            Int     @id @default(autoincrement())
+  product_id    Int     @map("id_produk")
+  price_type_id Int     @map("id_tipe_harga")
+  price         Decimal @map("harga") @db.Decimal(15, 2)
+
+  product   Product   @relation(fields: [product_id], references: [id])
+  priceType PriceType @relation(fields: [price_type_id], references: [id])
+
+  @@unique([product_id, price_type_id])
+  @@map("produk_harga")
+}
+
+model Warehouse {
+  id          Int     @id @default(autoincrement())
+  code        String? @unique @map("kode")
+  name        String  @map("nama")
+  type        String  @map("tipe")
+  description String? @map("keterangan") @db.Text
+
+  productOut     ProductOut[]
+  productIn      ProductIn[]
+  batchMutations BatchMutation[]
+  invoiceReturns InvoiceReturn[]
+
+  @@map("gudang")
+}
+
+// plan dan kasbon
+
+enum SalesKanvasPlanStatus {
+  DRAFT
+  DISETUJUI
+  LOADING
+  KOMPLIT
+  BATAL
+  REVISI
+}
+
+/// Status kasbon mengikuti status plan.
+enum KasbonStatus {
+  DRAFT
+  ACC
+  BATAL
+}
+
+model SalesKanvasPlan {
+  id             Int                   @id @default(autoincrement())
+  plan_no        String                @unique @map("no_rencana")
+  employee_id    Int                   @map("id_karyawan")
+  vehicle_id     Int?                  @map("id_kendaraan")
+  market_area_id Int?                  @map("id_wilayah_kanvas")
+  departure_date DateTime              @map("tgl_berangkat") @db.Date
+  return_date    DateTime?             @map("tgl_pulang") @db.Date
+  status         SalesKanvasPlanStatus @default(DRAFT)
+  cancelled_at   DateTime?             @map("tgl_dibatalkan")
+
+  employee   Employee    @relation(fields: [employee_id], references: [id])
+  vehicle    Vehicle?    @relation(fields: [vehicle_id], references: [id])
+  marketArea MarketArea? @relation(fields: [market_area_id], references: [id])
+
+  outlets            SalesKanvasPlanOutlet[]
+  kasbonProducts     SalesKanvasKasbonProduct[]
+  kasbonOperationals SalesKanvasKasbonOperational[]
+  productOut         ProductOut[]
+  productIn          ProductIn[]
+  batchMutations     BatchMutation[]
+  invoiceOutlets     InvoiceOutlet[]
+
+  @@map("rencana_kanvas")
+}
+
+model SalesKanvasPlanOutlet {
+  id                   Int @id @default(autoincrement())
+  sales_kanvas_plan_id Int @map("id_rencana_kanvas")
+  outlet_id            Int @map("id_outlet")
+
+  salesKanvasPlan SalesKanvasPlan @relation(fields: [sales_kanvas_plan_id], references: [id], onDelete: Cascade)
+  outlet          Outlet          @relation(fields: [outlet_id], references: [id])
+
+  @@map("detail_rencana_kanvas")
+}
+
+model SalesKanvasKasbonProduct {
+  id                   Int          @id @default(autoincrement())
+  kasbon_no            String       @unique @map("no_kasbon")
+  sales_kanvas_plan_id Int          @map("id_rencana_kanvas")
+  employee_id          Int          @map("id_karyawan")
+  date                 DateTime     @map("tanggal") @db.Date
+  description          String?      @map("keterangan") @db.Text
+  status               KasbonStatus @default(DRAFT)
+  note                 String?      @map("catatan_revisi") @db.Text
+  approved_at          DateTime?    @map("tgl_acc")
+  created_at           DateTime?    @default(now())
+
+  salesKanvasPlan SalesKanvasPlan                  @relation(fields: [sales_kanvas_plan_id], references: [id])
+  employee        Employee                         @relation(fields: [employee_id], references: [id])
+  details         SalesKanvasKasbonProductDetail[]
+  productOut      ProductOut[]
+
+  @@map("kasbon_produk")
+}
+
+model SalesKanvasKasbonProductDetail {
+  id                             Int      @id @default(autoincrement())
+  sales_kanvas_kasbon_product_id Int      @map("id_kasbon_produk")
+  product_id                     Int      @map("id_produk")
+  qty                            Int
+  price                          Decimal? @map("harga") @db.Decimal(15, 2)
+
+  kasbonProduct SalesKanvasKasbonProduct @relation(fields: [sales_kanvas_kasbon_product_id], references: [id], onDelete: Cascade)
+  product       Product                  @relation(fields: [product_id], references: [id])
+
+  @@map("detail_kasbon_produk")
+}
+
+model SalesKanvasKasbonOperational {
+  id                   Int          @id @default(autoincrement())
+  kasbon_no            String       @unique @map("no_kasbon")
+  sales_kanvas_plan_id Int          @map("id_rencana_kanvas")
+  employee_id          Int          @map("id_karyawan")
+  date                 DateTime     @map("tanggal") @db.Date
+  amount               Decimal      @map("jumlah") @db.Decimal(15, 2)
+  purpose              String?      @map("keperluan") @db.Text
+  status               KasbonStatus @default(DRAFT)
+  note                 String?      @map("catatan_revisi") @db.Text
+  approved_at          DateTime?    @map("tgl_acc")
+  created_at           DateTime?    @default(now())
+
+  salesKanvasPlan SalesKanvasPlan @relation(fields: [sales_kanvas_plan_id], references: [id])
+  employee        Employee        @relation(fields: [employee_id], references: [id])
+
+  @@map("kasbon_operasional")
+}
+
+//  STOCK
+
+enum StockDirection {
+  IN
+  OUT
+}
+
+/// Master tipe sumber transaksi gudang.
+/// IN  = Produksi, Sales Kanvas, Toko
+/// OUT = Toko, Sales Counter, Sales Kanvas
+model SourceType {
+  id        Int            @id @default(autoincrement())
+  code      String         @map("kode")
+  name      String         @map("nama")
+  direction StockDirection @map("arah")
+  is_active Boolean        @default(true) @map("aktif")
+
+  productIn  ProductIn[]
+  productOut ProductOut[]
+
+  @@unique([direction, code])
+  @@map("tipe_sumber")
+}
+
+model ProductOut {
+  id                             Int       @id @default(autoincrement())
+  transaction_no                 String    @unique @map("no_transaksi")
+  date                           DateTime  @map("tanggal") @db.Date
+  warehouse_id                   Int       @map("id_gudang")
+  source_type_id                 Int?      @map("id_tipe_sumber")
+  sales_kanvas_plan_id           Int?      @map("id_rencana_kanvas")
+  sales_kanvas_kasbon_product_id Int?      @map("id_kasbon_produk")
+  description                    String?   @map("keterangan") @db.Text
+  created_by                     Int?
+  created_at                     DateTime? @default(now())
+
+  warehouse       Warehouse                 @relation(fields: [warehouse_id], references: [id])
+  sourceType      SourceType?               @relation(fields: [source_type_id], references: [id])
+  salesKanvasPlan SalesKanvasPlan?          @relation(fields: [sales_kanvas_plan_id], references: [id])
+  kasbonProduct   SalesKanvasKasbonProduct? @relation(fields: [sales_kanvas_kasbon_product_id], references: [id])
+  creator         User?                     @relation(fields: [created_by], references: [id])
+  details         ProductOutDetail[]
+
+  @@index([source_type_id])
+  @@map("produk_out")
+}
+
+model ProductOutDetail {
+  id             Int     @id @default(autoincrement())
+  product_out_id Int     @map("id_produk_out")
+  product_id     Int     @map("id_produk")
+  batch          String?
+  qty            Int
+
+  productOut     ProductOut      @relation(fields: [product_out_id], references: [id], onDelete: Cascade)
+  product        Product         @relation(fields: [product_id], references: [id])
+  batchMutations BatchMutation[]
+
+  @@map("detail_produk_out")
+}
+
+model ProductIn {
+  id                   Int       @id @default(autoincrement())
+  transaction_no       String    @unique @map("no_transaksi")
+  date                 DateTime  @map("tanggal") @db.Date
+  warehouse_id         Int       @map("id_gudang")
+  source_type_id       Int?      @map("id_tipe_sumber")
+  sales_kanvas_plan_id Int?      @map("id_rencana_kanvas")
+  description          String?   @map("keterangan") @db.Text
+  created_by           Int?
+  created_at           DateTime? @default(now())
+
+  warehouse       Warehouse         @relation(fields: [warehouse_id], references: [id])
+  sourceType      SourceType?       @relation(fields: [source_type_id], references: [id])
+  salesKanvasPlan SalesKanvasPlan?  @relation(fields: [sales_kanvas_plan_id], references: [id])
+  creator         User?             @relation(fields: [created_by], references: [id])
+  details         ProductInDetail[]
+
+  @@index([source_type_id])
+  @@map("produk_in")
+}
+
+model ProductInDetail {
+  id            Int      @id @default(autoincrement())
+  product_in_id Int      @map("id_produk_in")
+  product_id    Int      @map("id_produk")
+  batch         String?
+  expired_date  DateTime @map("tgl_kedaluwarsa") @db.Date
+  qty           Int
+
+  productIn      ProductIn       @relation(fields: [product_in_id], references: [id], onDelete: Cascade)
+  product        Product         @relation(fields: [product_id], references: [id])
+  batchMutations BatchMutation[]
+
+  @@map("detail_produk_in")
+}
+
+model BatchMutation {
+  id                    Int      @id @default(autoincrement())
+  date                  DateTime @map("tanggal") @db.Date
+  product_id            Int      @map("id_produk")
+  warehouse_id          Int      @map("id_gudang")
+  sales_kanvas_plan_id  Int?     @map("id_rencana_kanvas")
+  product_out_detail_id Int?     @map("id_detail_produk_out")
+  product_in_detail_id  Int?     @map("id_detail_produk_in")
+  batch                 String
+  expired_date          DateTime @map("tgl_kedaluwarsa") @db.Date
+  direction             String   @map("arah") // IN, OUT
+  qty                   Int
+
+  product          Product           @relation(fields: [product_id], references: [id])
+  warehouse        Warehouse         @relation(fields: [warehouse_id], references: [id])
+  salesKanvasPlan  SalesKanvasPlan?  @relation(fields: [sales_kanvas_plan_id], references: [id])
+  productOutDetail ProductOutDetail? @relation(fields: [product_out_detail_id], references: [id])
+  productInDetail  ProductInDetail?  @relation(fields: [product_in_detail_id], references: [id])
+
+  @@index([product_id, warehouse_id, batch])
+  @@index([product_id, warehouse_id, expired_date])
+  @@map("mutasi_batch")
+}
+
+//  SALES, RETURN, RECEIVABLE
+
+model InvoiceOutlet {
+  id                   Int       @id @default(autoincrement())
+  invoice_no           String    @unique @map("no_invoice")
+  date                 DateTime  @map("tanggal") @db.Date
+  outlet_id            Int       @map("id_outlet")
+  sales_kanvas_plan_id Int?      @map("id_rencana_kanvas")
+  payment_type         String    @map("tipe_pembayaran") // CASH, TOP
+  top_days             Int?      @default(0) @map("top_hari")
+  due_date             DateTime? @map("tgl_jatuh_tempo") @db.Date
+  total                Decimal   @db.Decimal(15, 2)
+
+  outlet          Outlet                 @relation(fields: [outlet_id], references: [id])
+  salesKanvasPlan SalesKanvasPlan?       @relation(fields: [sales_kanvas_plan_id], references: [id])
+  details         InvoiceOutletDetail[]
+  returns         InvoiceReturn[]
+  payments        InvoicePayment[]
+  receivableCards OutletReceivableCard[]
+
+  @@map("invoice_outlet")
+}
+
+model InvoiceOutletDetail {
+  id                Int     @id @default(autoincrement())
+  invoice_outlet_id Int     @map("id_invoice_outlet")
+  product_id        Int     @map("id_produk")
+  batch             String?
+  qty               Int
+  price             Decimal @map("harga") @db.Decimal(15, 2)
+  subtotal          Decimal @db.Decimal(15, 2)
+
+  invoiceOutlet InvoiceOutlet @relation(fields: [invoice_outlet_id], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [product_id], references: [id])
+
+  @@map("detail_invoice_outlet")
+}
+
+model InvoiceReturn {
+  id                Int      @id @default(autoincrement())
+  return_no         String   @unique @map("no_retur")
+  date              DateTime @map("tanggal") @db.Date
+  outlet_id         Int      @map("id_outlet")
+  invoice_outlet_id Int?     @map("id_invoice_outlet")
+  warehouse_id      Int?     @map("id_gudang")
+  total             Decimal  @db.Decimal(15, 2)
+
+  outlet        Outlet                @relation(fields: [outlet_id], references: [id])
+  invoiceOutlet InvoiceOutlet?        @relation(fields: [invoice_outlet_id], references: [id])
+  warehouse     Warehouse?            @relation(fields: [warehouse_id], references: [id])
+  details       InvoiceReturnDetail[]
+
+  @@map("invoice_retur_produk")
+}
+
+model InvoiceReturnDetail {
+  id                Int     @id @default(autoincrement())
+  invoice_return_id Int     @map("id_invoice_retur_produk")
+  product_id        Int     @map("id_produk")
+  batch             String?
+  qty               Int
+  price             Decimal @map("harga") @db.Decimal(15, 2)
+  subtotal          Decimal @db.Decimal(15, 2)
+
+  invoiceReturn InvoiceReturn @relation(fields: [invoice_return_id], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [product_id], references: [id])
+
+  @@map("detail_invoice_retur_produk")
+}
+
+model InvoicePayment {
+  id                Int      @id @default(autoincrement())
+  invoice_outlet_id Int      @map("id_invoice_outlet")
+  date              DateTime @map("tanggal") @db.Date
+  amount            Decimal  @map("jumlah") @db.Decimal(15, 2)
+
+  invoiceOutlet   InvoiceOutlet          @relation(fields: [invoice_outlet_id], references: [id])
+  receivableCards OutletReceivableCard[]
+
+  @@map("pembayaran_invoice")
+}
+
+model OutletReceivableCard {
+  id                 Int      @id @default(autoincrement())
+  outlet_id          Int      @map("id_outlet")
+  invoice_outlet_id  Int      @map("id_invoice_outlet")
+  invoice_payment_id Int?     @map("id_pembayaran_invoice")
+  date               DateTime @map("tanggal") @db.Date
+  remaining          Decimal  @map("sisa") @db.Decimal(15, 2)
+
+  outlet         Outlet          @relation(fields: [outlet_id], references: [id])
+  invoiceOutlet  InvoiceOutlet   @relation(fields: [invoice_outlet_id], references: [id])
+  invoicePayment InvoicePayment? @relation(fields: [invoice_payment_id], references: [id])
+
+  @@map("kartu_piutang_outlet")
+}
+
+===== src\stock\batch-mutations\stock.util.ts =====
+
+import { Prisma } from '@prisma/client';
+
+export async function getBatchBalance(
+  db: Prisma.TransactionClient,
+  where: { warehouse_id: number; product_id: number; batch: string },
+) {
+  const rows = await db.batchMutation.groupBy({
+    by: ['direction'],
+    where,
+    _sum: { qty: true },
+  });
+  const sum = (dir: string) =>
+    rows.find((r) => r.direction === dir)?._sum.qty ?? 0;
+  return sum('IN') - sum('OUT');
+}
+
+===== src\stock\product-ins\dto\create-product-in.dto.ts =====
+
+import { z } from 'zod';
+import { createZodDto } from 'nestjs-zod';
+
+const detailSchema = z
+  .object({
+    product_id: z.number().int().positive(),
+    batch: z.string().min(1),
+    /** Wajib: semua produk harus punya tanggal kedaluwarsa */
+    expired_date: z.coerce.date(),
+    qty: z.number().int().positive(),
+  })
+  .strict();
+
+export const createProductInSchema = z
+  .object({
+    date: z.coerce.date(),
+    warehouse_id: z.number().int().positive(),
+    source_type_id: z.number().int().positive(),
+    sales_kanvas_plan_id: z.number().int().positive().optional(),
+    description: z.string().optional(),
+    details: z.array(detailSchema).min(1),
+  })
+  .strict();
+
+export class CreateProductInDto extends createZodDto(createProductInSchema) {}
+
+===== src\stock\product-ins\dto\update-product-in.dto.ts =====
+
+import { createZodDto } from 'nestjs-zod';
+import { createProductInSchema } from './create-product-in.dto';
+
+export class UpdateProductInDto extends createZodDto(
+  createProductInSchema.pick({
+    description: true,
+  }),
+) {}
+
+===== src\stock\product-outs\dto\create-product-out.dto.ts =====
+
+import { z } from 'zod';
+import { createZodDto } from 'nestjs-zod';
+
+/** Batch tidak dikirim: dipilih otomatis oleh sistem (FEFO). */
+const detailSchema = z
+  .object({
+    product_id: z.number().int().positive(),
+    qty: z.number().int().positive(),
+  })
+  .strict();
+
+export const createProductOutSchema = z
+  .object({
+    date: z.coerce.date(),
+    warehouse_id: z.number().int().positive(),
+    /** GET /source-types?direction=OUT: Toko, Sales Counter, Sales Kanvas */
+    source_type_id: z.number().int().positive(),
+    sales_kanvas_plan_id: z.number().int().positive().optional(),
+    /** Wajib untuk Sales Kanvas: bon barang yang sudah ACC */
+    sales_kanvas_kasbon_product_id: z.number().int().positive().optional(),
+    description: z.string().optional(),
+    details: z.array(detailSchema).min(1),
+  })
+  .strict();
+
+export class CreateProductOutDto extends createZodDto(createProductOutSchema) {}
+
+===== src\stock\product-outs\dto\update-product-out.dto.ts =====
+
+import { createZodDto } from 'nestjs-zod';
+import { createProductOutSchema } from './create-product-out.dto';
+
+export class UpdateProductOutDto extends createZodDto(
+  createProductOutSchema.pick({
+    description: true,
+  }),
+) {}

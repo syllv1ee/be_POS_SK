@@ -1,66 +1,35 @@
-
 import {
-  BadRequestException,
-  Body,
   Controller,
-  Delete,
   Get,
   Param,
   ParseIntPipe,
-  Patch,
-  Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
-
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permission.guard';
+import { Authenticated } from '../../common/decorators/authenticated.decorator';
 import { KasbonOperationalsService } from './kasbon-operationals.service';
 
-import { CreateKasbonOperationalDto } from './dto/create-kasbon-operational.dto';
-
-import { UpdateKasbonOperationalDto } from './dto/update-kasbon-operational.dto';
-
 @Controller('plan/kasbon-operationals')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class KasbonOperationalsController {
   constructor(
     private readonly kasbonOperationalsService: KasbonOperationalsService,
   ) {}
 
   @Get()
-  findAll(@Query('sales_kanvas_plan_id') planId?: string) {
-    let parsedPlanId: number | undefined;
-
-    if (planId !== undefined) {
-      parsedPlanId = Number(planId);
-
-      if (!Number.isInteger(parsedPlanId) || parsedPlanId <= 0) {
-        throw new BadRequestException(
-          'sales_kanvas_plan_id harus berupa angka positif',
-        );
-      }
-    }
-
-    return this.kasbonOperationalsService.findAll(parsedPlanId);
+  @Authenticated()
+  findAll(
+    @Query('sales_kanvas_plan_id', new ParseIntPipe({ optional: true }))
+    planId?: number,
+  ) {
+    return this.kasbonOperationalsService.findAll(planId);
   }
 
   @Get(':id')
+  @Authenticated()
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.kasbonOperationalsService.findOne(id);
-  }
-
-  @Post()
-  create(@Body() dto: CreateKasbonOperationalDto) {
-    return this.kasbonOperationalsService.create(dto);
-  }
-
-  @Patch(':id')
-  update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateKasbonOperationalDto,
-  ) {
-    return this.kasbonOperationalsService.update(id, dto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.kasbonOperationalsService.remove(id);
   }
 }

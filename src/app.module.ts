@@ -4,6 +4,9 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { RolesModule } from './access/roles/roles.module';
+import { UsersModule } from './access/users/users.module';
+import { PermissionsModule } from './access/permissions/permissions.module';
 import { MarketAreasModule } from './master/market-areas/market-areas.module';
 import { EmployeesModule } from './master/employees/employees.module';
 import { OutletsModule } from './master/outlets/outlets.module';
@@ -15,6 +18,8 @@ import { WarehousesModule } from './master/warehouses/warehouses.module';
 import { SalesKanvasPlansModule } from './plan/sales-kanvas-plans/sales-kanvas-plans.module';
 import { KasbonProductsModule } from './plan/kasbon-products/kasbon-products.module';
 import { KasbonOperationalsModule } from './plan/kasbon-operationals/kasbon-operationals.module';
+import { PlanKasbonsModule } from './plan/plan-kasbons/plan-kasbons.module';
+import { SettlementsModule } from './plan/settlements/settlements.module';
 import { InvoicesModule } from './sales/invoices/invoices.module';
 import { InvoicePaymentsModule } from './sales/invoice-payments/invoice-payments.module';
 import { InvoiceReturnsModule } from './sales/invoice-returns/invoice-returns.module';
@@ -28,6 +33,9 @@ import { ProductInsModule } from './stock/product-ins/product-ins.module';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuthModule,
+    RolesModule,
+    UsersModule,
+    PermissionsModule,
     MarketAreasModule,
     EmployeesModule,
     OutletsModule,
@@ -39,6 +47,8 @@ import { ProductInsModule } from './stock/product-ins/product-ins.module';
     SalesKanvasPlansModule,
     KasbonProductsModule,
     KasbonOperationalsModule,
+    PlanKasbonsModule,
+    SettlementsModule,
     InvoicesModule,
     InvoicePaymentsModule,
     InvoiceReturnsModule,

@@ -1,0 +1,1691 @@
+
+===== .\src\plan\kasbon-operationals\kasbon-operationals.controller.ts =====
+
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permission.guard';
+import { Authenticated } from '../../common/decorators/authenticated.decorator';
+import { KasbonOperationalsService } from './kasbon-operationals.service';
+
+@Controller('plan/kasbon-operationals')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class KasbonOperationalsController {
+  constructor(
+    private readonly kasbonOperationalsService: KasbonOperationalsService,
+  ) {}
+
+  @Get()
+  @Authenticated()
+  findAll(
+    @Query('sales_kanvas_plan_id', new ParseIntPipe({ optional: true }))
+    planId?: number,
+  ) {
+    return this.kasbonOperationalsService.findAll(planId);
+  }
+
+  @Get(':id')
+  @Authenticated()
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.kasbonOperationalsService.findOne(id);
+  }
+}
+
+===== .\src\plan\kasbon-operationals\kasbon-operationals.module.ts =====
+
+import { Module } from '@nestjs/common';
+import { KasbonOperationalsController } from './kasbon-operationals.controller';
+import { KasbonOperationalsService } from './kasbon-operationals.service';
+
+@Module({
+  controllers: [KasbonOperationalsController],
+  providers: [KasbonOperationalsService],
+})
+export class KasbonOperationalsModule {}
+
+===== .\src\plan\kasbon-operationals\kasbon-operationals.service.ts =====
+
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+
+const include = {
+  employee: { select: { id: true, name: true } },
+};
+
+@Injectable()
+export class KasbonOperationalsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  findAll(planId?: number) {
+    return this.prisma.salesKanvasKasbonOperational.findMany({
+      where: planId ? { sales_kanvas_plan_id: planId } : {},
+      include,
+      orderBy: { id: 'desc' },
+    });
+  }
+
+  findOne(id: number) {
+    return this.prisma.salesKanvasKasbonOperational.findUniqueOrThrow({
+      where: { id },
+      include,
+    });
+  }
+}
+
+===== .\src\plan\kasbon-operationals\dto\create-kasbon-operational.dto.ts =====
+
+import { z } from 'zod';
+import { createZodDto } from 'nestjs-zod';
+
+export const createKasbonOperationalSchema = z
+  .object({
+    sales_kanvas_plan_id: z.number().int().positive(),
+    employee_id: z.number().int().positive(),
+    date: z.coerce.date(),
+    amount: z.number().positive(),
+    purpose: z.string().optional(),
+  })
+  .strict();
+
+export class CreateKasbonOperationalDto extends createZodDto(
+  createKasbonOperationalSchema,
+) {}
+
+===== .\src\plan\kasbon-operationals\dto\decide-kasbon-operational.dto.ts =====
+
+import { createZodDto } from 'nestjs-zod';
+import { decideKasbonSchema } from '../../kasbon-products/dto/decide-kasbon-product.dto';
+
+export class DecideKasbonOperationalDto extends createZodDto(
+  decideKasbonSchema,
+) {}
+
+===== .\src\plan\kasbon-operationals\dto\update-kasbon-operational.dto.ts =====
+
+import { createZodDto } from 'nestjs-zod';
+import { createKasbonOperationalSchema } from './create-kasbon-operational.dto';
+
+export class UpdateKasbonOperationalDto extends createZodDto(
+  createKasbonOperationalSchema.omit({ sales_kanvas_plan_id: true }).partial(),
+) {}
+
+===== .\src\plan\kasbon-products\kasbon-products.controller.ts =====
+
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permission.guard';
+import { Authenticated } from '../../common/decorators/authenticated.decorator';
+import { KasbonProductsService } from './kasbon-products.service';
+
+@Controller('plan/kasbon-products')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class KasbonProductsController {
+  constructor(private readonly kasbonProductsService: KasbonProductsService) {}
+
+  @Get()
+  @Authenticated()
+  findAll(
+    @Query('sales_kanvas_plan_id', new ParseIntPipe({ optional: true }))
+    planId?: number,
+  ) {
+    return this.kasbonProductsService.findAll(planId);
+  }
+
+  @Get(':id')
+  @Authenticated()
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.kasbonProductsService.findOne(id);
+  }
+}
+
+===== .\src\plan\kasbon-products\kasbon-products.module.ts =====
+
+import { Module } from '@nestjs/common';
+import { KasbonProductsController } from './kasbon-products.controller';
+import { KasbonProductsService } from './kasbon-products.service';
+
+@Module({
+  controllers: [KasbonProductsController],
+  providers: [KasbonProductsService],
+})
+export class KasbonProductsModule {}
+
+===== .\src\plan\kasbon-products\kasbon-products.service.ts =====
+
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+
+const include = {
+  details: {
+    include: { product: { select: { id: true, code: true, name: true } } },
+  },
+  employee: { select: { id: true, name: true } },
+};
+
+@Injectable()
+export class KasbonProductsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  findAll(planId?: number) {
+    return this.prisma.salesKanvasKasbonProduct.findMany({
+      where: { sales_kanvas_plan_id: planId },
+      include,
+      orderBy: { id: 'desc' },
+    });
+  }
+
+  findOne(id: number) {
+    return this.prisma.salesKanvasKasbonProduct.findUniqueOrThrow({
+      where: { id },
+      include,
+    });
+  }
+}
+
+===== .\src\plan\kasbon-products\dto\create-kasbon-product.dto.ts =====
+
+import { z } from 'zod';
+import { createZodDto } from 'nestjs-zod';
+
+const detailSchema = z
+  .object({
+    product_id: z.number().int().positive(),
+    qty: z.number().int().positive(),
+    price: z.number().min(0).optional(),
+  })
+  .strict();
+
+export const createKasbonProductSchema = z
+  .object({
+    sales_kanvas_plan_id: z.number().int().positive(),
+    employee_id: z.number().int().positive(),
+    date: z.coerce.date(),
+    description: z.string().optional(),
+    details: z.array(detailSchema).min(1),
+  })
+  .strict();
+
+export class CreateKasbonProductDto extends createZodDto(
+  createKasbonProductSchema,
+) {}
+
+===== .\src\plan\kasbon-products\dto\decide-kasbon-product.dto.ts =====
+
+import { z } from 'zod';
+import { createZodDto } from 'nestjs-zod';
+
+export const decideKasbonSchema = z
+  .object({
+    status: z.enum(['ACC', 'REVISI']),
+    note: z.string().trim().max(500).optional(),
+  })
+  .strict()
+  .refine((d) => d.status !== 'REVISI' || !!d.note, {
+    message: 'Catatan wajib diisi saat meminta revisi',
+    path: ['note'],
+  });
+
+export class DecideKasbonProductDto extends createZodDto(decideKasbonSchema) {}
+
+===== .\src\plan\kasbon-products\dto\update-kasbon-product.dto.ts =====
+
+import { createZodDto } from 'nestjs-zod';
+import { createKasbonProductSchema } from './create-kasbon-product.dto';
+
+// Bila `details` dikirim, seluruh detail lama diganti. Plan tidak boleh dipindah.
+export class UpdateKasbonProductDto extends createZodDto(
+  createKasbonProductSchema.omit({ sales_kanvas_plan_id: true }).partial(),
+) {}
+
+===== .\src\plan\plan-kasbons\plan-kasbons.controller.ts =====
+
+import {
+  Body,
+  Controller,
+  Param,
+  ParseIntPipe,
+  Post,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PlanKasbonDto } from './dto/plan-kasbon.dto';
+import { PlanKasbonsService } from './plan-kasbons.service';
+
+@Controller('sales-kanvas-plans/:planId/kasbon')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class PlanKasbonsController {
+  constructor(private readonly service: PlanKasbonsService) {}
+
+  /** Buat bon barang + detail + kasbon operasional dalam satu transaction. */
+  @Post()
+  @RequirePermission('kasbon-product:write')
+  create(
+    @Param('planId', ParseIntPipe) planId: number,
+    @Body() dto: PlanKasbonDto,
+  ) {
+    return this.service.create(planId, dto);
+  }
+
+  @Put()
+  @RequirePermission('kasbon-product:write')
+  update(
+    @Param('planId', ParseIntPipe) planId: number,
+    @Body() dto: PlanKasbonDto,
+  ) {
+    return this.service.update(planId, dto);
+  }
+}
+
+===== .\src\plan\plan-kasbons\plan-kasbons.module.ts =====
+
+import { Module } from '@nestjs/common';
+import { PlanKasbonsController } from './plan-kasbons.controller';
+import { PlanKasbonsService } from './plan-kasbons.service';
+
+@Module({
+  controllers: [PlanKasbonsController],
+  providers: [PlanKasbonsService],
+})
+export class PlanKasbonsModule {}
+
+===== .\src\plan\plan-kasbons\plan-kasbons.service.ts =====
+
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { docPrefix, nextDocNo } from '../../common/utils/doc-number.util';
+import { PlanKasbonDto } from './dto/plan-kasbon.dto';
+
+@Injectable()
+export class PlanKasbonsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private async getPlan(planId: number) {
+    const plan = await this.prisma.salesKanvasPlan.findUnique({
+      where: { id: planId },
+    });
+    if (!plan) throw new NotFoundException(`Plan ${planId} tidak ditemukan`);
+    return plan;
+  }
+
+  /** Plan harus Disetujui dulu. Kasbon baru lahir ACC (mengikuti plan). */
+  async create(planId: number, dto: PlanKasbonDto) {
+    const plan = await this.getPlan(planId);
+    if (plan.status !== 'DISETUJUI') {
+      throw new BadRequestException(
+        'Kasbon hanya dapat dibuat untuk plan yang berstatus Disetujui',
+      );
+    }
+
+    const [hasProduct, hasOperational] = await Promise.all([
+      this.prisma.salesKanvasKasbonProduct.findFirst({
+        where: { sales_kanvas_plan_id: planId, status: { not: 'BATAL' } },
+        select: { kasbon_no: true },
+      }),
+      this.prisma.salesKanvasKasbonOperational.findFirst({
+        where: { sales_kanvas_plan_id: planId, status: { not: 'BATAL' } },
+        select: { kasbon_no: true },
+      }),
+    ]);
+    if (hasProduct || hasOperational) {
+      throw new BadRequestException('Plan ini sudah punya kasbon');
+    }
+
+    await this.assertProducts(dto);
+
+    // Satu transaction: kasbon_produk + detail_kasbon_produk + kasbon_operasional.
+    await this.prisma.$transaction(async (tx) => {
+      const now = new Date();
+
+      await tx.salesKanvasKasbonProduct.create({
+        data: {
+          kasbon_no: await this.nextNo(tx, 'KBP', dto.date, 'product'),
+          sales_kanvas_plan_id: planId,
+          employee_id: plan.employee_id,
+          date: dto.date,
+          description: dto.description,
+          status: 'ACC',
+          approved_at: now,
+          details: { create: dto.details },
+        },
+      });
+
+      await tx.salesKanvasKasbonOperational.create({
+        data: {
+          kasbon_no: await this.nextNo(tx, 'KBO', dto.date, 'operational'),
+          sales_kanvas_plan_id: planId,
+          employee_id: plan.employee_id,
+          date: dto.date,
+          amount: dto.operational.amount,
+          purpose: dto.operational.purpose,
+          status: 'ACC',
+          approved_at: now,
+        },
+      });
+    });
+
+    return this.findByPlan(planId);
+  }
+
+  /** Ubah kasbon: hanya saat plan masih Disetujui dan bon belum di-loading. */
+  async update(planId: number, dto: PlanKasbonDto) {
+    const plan = await this.getPlan(planId);
+    if (plan.status !== 'DISETUJUI') {
+      throw new BadRequestException(
+        'Kasbon hanya dapat diubah saat plan berstatus Disetujui',
+      );
+    }
+
+    const [product, operational] = await Promise.all([
+      this.prisma.salesKanvasKasbonProduct.findFirst({
+        where: { sales_kanvas_plan_id: planId, status: { not: 'BATAL' } },
+      }),
+      this.prisma.salesKanvasKasbonOperational.findFirst({
+        where: { sales_kanvas_plan_id: planId, status: { not: 'BATAL' } },
+      }),
+    ]);
+    if (!product || !operational) {
+      throw new BadRequestException('Kasbon belum dibuat untuk plan ini');
+    }
+
+    const loaded = await this.prisma.productOut.findFirst({
+      where: { sales_kanvas_kasbon_product_id: product.id },
+      select: { transaction_no: true },
+    });
+    if (loaded) {
+      throw new BadRequestException(
+        `Kasbon sudah di-loading (${loaded.transaction_no}) dan tidak dapat diubah`,
+      );
+    }
+
+    await this.assertProducts(dto);
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.salesKanvasKasbonProductDetail.deleteMany({
+        where: { sales_kanvas_kasbon_product_id: product.id },
+      });
+      await tx.salesKanvasKasbonProduct.update({
+        where: { id: product.id },
+        data: {
+          date: dto.date,
+          description: dto.description ?? null,
+          details: { create: dto.details },
+        },
+      });
+      await tx.salesKanvasKasbonOperational.update({
+        where: { id: operational.id },
+        data: {
+          date: dto.date,
+          amount: dto.operational.amount,
+          purpose: dto.operational.purpose ?? null,
+        },
+      });
+    });
+
+    return this.findByPlan(planId);
+  }
+
+  async findByPlan(planId: number) {
+    const [kasbonProducts, kasbonOperationals] = await Promise.all([
+      this.prisma.salesKanvasKasbonProduct.findMany({
+        where: { sales_kanvas_plan_id: planId },
+        include: {
+          details: {
+            include: {
+              product: { select: { id: true, code: true, name: true } },
+            },
+          },
+        },
+        orderBy: { id: 'desc' },
+      }),
+      this.prisma.salesKanvasKasbonOperational.findMany({
+        where: { sales_kanvas_plan_id: planId },
+        orderBy: { id: 'desc' },
+      }),
+    ]);
+    return { kasbonProducts, kasbonOperationals };
+  }
+
+  private async assertProducts(dto: PlanKasbonDto) {
+    const ids = dto.details.map((d) => d.product_id);
+    const found = await this.prisma.product.findMany({
+      where: { id: { in: ids } },
+      select: { id: true },
+    });
+    if (found.length !== ids.length) {
+      throw new BadRequestException('Satu atau lebih produk tidak ditemukan');
+    }
+  }
+
+  private async nextNo(
+    tx: Prisma.TransactionClient,
+    code: 'KBP' | 'KBO',
+    date: Date,
+    kind: 'product' | 'operational',
+  ) {
+    const prefix = docPrefix(code, date);
+    const where = { kasbon_no: { startsWith: prefix } };
+    const orderBy = { kasbon_no: 'desc' as const };
+    const select = { kasbon_no: true };
+
+    const last =
+      kind === 'product'
+        ? await tx.salesKanvasKasbonProduct.findFirst({ where, orderBy, select })
+        : await tx.salesKanvasKasbonOperational.findFirst({
+            where,
+            orderBy,
+            select,
+          });
+
+    return nextDocNo(prefix, last?.kasbon_no);
+  }
+}
+
+===== .\src\plan\plan-kasbons\dto\plan-kasbon.dto.ts =====
+
+import { z } from 'zod';
+import { createZodDto } from 'nestjs-zod';
+
+const detailSchema = z
+  .object({
+    product_id: z.number().int().positive(),
+    qty: z.number().int().positive(),
+    price: z.number().min(0).optional(),
+  })
+  .strict();
+
+/** Satu form: bon barang (header + detail) dan kasbon operasional. Keduanya wajib. */
+export const planKasbonSchema = z
+  .object({
+    date: z.coerce.date(),
+    description: z.string().optional(),
+    details: z.array(detailSchema).min(1),
+    operational: z
+      .object({
+        amount: z.number().positive(),
+        purpose: z.string().optional(),
+      })
+      .strict(),
+  })
+  .strict()
+  .refine(
+    (d) =>
+      new Set(d.details.map((x) => x.product_id)).size === d.details.length,
+    { message: 'Produk pada bon barang tidak boleh duplikat', path: ['details'] },
+  );
+
+export class PlanKasbonDto extends createZodDto(planKasbonSchema) {}
+
+===== .\src\plan\sales-kanvas-plans\sales-kanvas-plans.controller.ts =====
+
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+} from '@nestjs/common';
+
+import { SalesKanvasPlansService } from './sales-kanvas-plans.service';
+import { CreateSalesKanvasPlanDto } from './dto/create-sales-kanvas-plan.dto';
+import { UpdateSalesKanvasPlanDto } from './dto/update-sales-kanvas-plan.dto';
+
+@Controller('sales-kanvas-plans')
+export class SalesKanvasPlansController {
+  constructor(
+    private readonly salesKanvasPlansService: SalesKanvasPlansService,
+  ) {}
+
+  @Post()
+  create(@Body() dto: CreateSalesKanvasPlanDto) {
+    return this.salesKanvasPlansService.create(dto);
+  }
+
+  @Get()
+  findAll() {
+    return this.salesKanvasPlansService.findAll();
+  }
+
+  @Get(':id')
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.salesKanvasPlansService.findOne(id);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateSalesKanvasPlanDto,
+  ) {
+    return this.salesKanvasPlansService.update(id, dto);
+  }
+}
+
+===== .\src\plan\sales-kanvas-plans\sales-kanvas-plans.module.ts =====
+
+import { Module } from '@nestjs/common';
+import { SalesKanvasPlansController } from './sales-kanvas-plans.controller';
+import { SalesKanvasPlansService } from './sales-kanvas-plans.service';
+
+@Module({
+  controllers: [SalesKanvasPlansController],
+  providers: [SalesKanvasPlansService],
+})
+export class SalesKanvasPlansModule {}
+
+===== .\src\plan\sales-kanvas-plans\sales-kanvas-plans.service.ts =====
+
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+
+import { PrismaService } from '../../prisma/prisma.service';
+import { CreateSalesKanvasPlanDto } from './dto/create-sales-kanvas-plan.dto';
+import { UpdateSalesKanvasPlanDto } from './dto/update-sales-kanvas-plan.dto';
+
+const PLAN_INCLUDE = {
+  employee: true,
+  vehicle: true,
+  marketArea: true,
+  outlets: { include: { outlet: true } },
+} as const;
+
+/** Alur status plan. Plan tidak bisa direvisi; yang sudah disetujui boleh dibatalkan. */
+const TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ['DISETUJUI', 'BATAL'],
+  DISETUJUI: ['LOADING', 'BATAL'],
+  LOADING: ['KOMPLIT', 'BATAL'],
+  KOMPLIT: [],
+  BATAL: [],
+  REVISI: [],
+};
+
+@Injectable()
+export class SalesKanvasPlansService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  /** Cek relasi yang dikirim (karyawan, kendaraan, area, outlet). */
+  private async validateRefs(dto: {
+    employee_id?: number;
+    vehicle_id?: number | null;
+    market_area_id?: number | null;
+    outlet_ids?: number[];
+  }) {
+    if (dto.employee_id !== undefined) {
+      const employee = await this.prisma.employee.findUnique({
+        where: { id: dto.employee_id },
+      });
+      if (!employee) {
+        throw new NotFoundException(
+          `Karyawan ${dto.employee_id} tidak ditemukan`,
+        );
+      }
+    }
+
+    if (dto.vehicle_id != null) {
+      const vehicle = await this.prisma.vehicle.findUnique({
+        where: { id: dto.vehicle_id },
+      });
+      if (!vehicle) {
+        throw new NotFoundException(
+          `Kendaraan ${dto.vehicle_id} tidak ditemukan`,
+        );
+      }
+    }
+
+    if (dto.market_area_id != null) {
+      const marketArea = await this.prisma.marketArea.findUnique({
+        where: { id: dto.market_area_id },
+      });
+      if (!marketArea) {
+        throw new NotFoundException(
+          `Wilayah kanvas ${dto.market_area_id} tidak ditemukan`,
+        );
+      }
+    }
+
+    if (dto.outlet_ids !== undefined) {
+      if (new Set(dto.outlet_ids).size !== dto.outlet_ids.length) {
+        throw new BadRequestException(
+          'outlet_ids tidak boleh berisi ID duplikat',
+        );
+      }
+      if (dto.outlet_ids.length > 0) {
+        const outlets = await this.prisma.outlet.findMany({
+          where: { id: { in: dto.outlet_ids } },
+          select: { id: true },
+        });
+        if (outlets.length !== dto.outlet_ids.length) {
+          throw new BadRequestException(
+            'Satu atau lebih ID outlet tidak ditemukan',
+          );
+        }
+      }
+    }
+  }
+
+  private assertDates(departure?: Date, ret?: Date | null) {
+    if (departure && ret && ret < departure) {
+      throw new BadRequestException(
+        'Tanggal kembali tidak boleh sebelum tanggal berangkat',
+      );
+    }
+  }
+
+  /**
+   * Sales dan kendaraan tidak boleh punya plan lain (yang belum batal) dengan tanggal bertumpuk.
+   * Jika tanggal kembali kosong, dianggap sehari (sama dengan tanggal berangkat).
+   */
+  private async assertAvailable(args: {
+    employee_id: number;
+    vehicle_id?: number | null;
+    departure: Date;
+    ret?: Date | null;
+    excludeId?: number;
+  }) {
+    const start = args.departure;
+    const end = args.ret ?? args.departure;
+
+    const overlap = {
+      status: { notIn: ['BATAL', 'REVISI'] as ('BATAL' | 'REVISI')[] },
+      ...(args.excludeId ? { id: { not: args.excludeId } } : {}),
+      departure_date: { lte: end },
+      OR: [
+        { return_date: { gte: start } },
+        { return_date: null, departure_date: { gte: start } },
+      ],
+    };
+
+    const employeeClash = await this.prisma.salesKanvasPlan.findFirst({
+      where: { ...overlap, employee_id: args.employee_id },
+      select: { plan_no: true },
+    });
+    if (employeeClash) {
+      throw new BadRequestException(
+        `Sales ini sudah punya plan di tanggal tersebut (${employeeClash.plan_no})`,
+      );
+    }
+
+    if (args.vehicle_id != null) {
+      const vehicleClash = await this.prisma.salesKanvasPlan.findFirst({
+        where: { ...overlap, vehicle_id: args.vehicle_id },
+        select: { plan_no: true },
+      });
+      if (vehicleClash) {
+        throw new BadRequestException(
+          `Kendaraan ini sudah dipakai plan lain di tanggal tersebut (${vehicleClash.plan_no})`,
+        );
+      }
+    }
+  }
+
+  async create(dto: CreateSalesKanvasPlanDto) {
+    await this.validateRefs(dto);
+    this.assertDates(dto.departure_date, dto.return_date);
+    await this.assertAvailable({
+      employee_id: dto.employee_id,
+      vehicle_id: dto.vehicle_id,
+      departure: dto.departure_date,
+      ret: dto.return_date,
+    });
+
+    const outletIds = dto.outlet_ids ?? [];
+    const planNo = `RKN-${Date.now()}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      const plan = await tx.salesKanvasPlan.create({
+        data: {
+          plan_no: planNo,
+          employee_id: dto.employee_id,
+          vehicle_id: dto.vehicle_id ?? null,
+          market_area_id: dto.market_area_id ?? null,
+          departure_date: dto.departure_date,
+          return_date: dto.return_date ?? null,
+          status: 'DRAFT',
+        },
+      });
+
+      if (outletIds.length > 0) {
+        await tx.salesKanvasPlanOutlet.createMany({
+          data: outletIds.map((outletId: number) => ({
+            sales_kanvas_plan_id: plan.id,
+            outlet_id: outletId,
+          })),
+        });
+      }
+
+      return tx.salesKanvasPlan.findUnique({
+        where: { id: plan.id },
+        include: PLAN_INCLUDE,
+      });
+    });
+  }
+
+  async findAll() {
+    return this.prisma.salesKanvasPlan.findMany({
+      include: PLAN_INCLUDE,
+      orderBy: { id: 'desc' },
+    });
+  }
+
+  async findOne(id: number) {
+    const plan = await this.prisma.salesKanvasPlan.findUnique({
+      where: { id },
+      include: PLAN_INCLUDE,
+    });
+
+    if (!plan) {
+      throw new NotFoundException(
+        `Sales Kanvas Plan dengan ID ${id} tidak ditemukan`,
+      );
+    }
+
+    return plan;
+  }
+
+  async update(id: number, dto: UpdateSalesKanvasPlanDto) {
+    const current = await this.findOne(id);
+
+    // Perpindahan status: status kasbon ikut berubah di transaction yang sama.
+    if (dto.status !== undefined) {
+      const allowed = TRANSITIONS[current.status] ?? [];
+      if (!allowed.includes(dto.status)) {
+        throw new BadRequestException(
+          `Status ${current.status} tidak bisa diubah ke ${dto.status}`,
+        );
+      }
+
+      // Stok sudah keluar lewat Product Out: plan tidak boleh dibatalkan.
+      if (dto.status === 'BATAL') {
+        const loaded = await this.prisma.productOut.count({
+          where: { sales_kanvas_plan_id: id },
+        });
+        if (loaded > 0) {
+          throw new BadRequestException(
+            'Plan tidak dapat dibatalkan karena sudah ada Product Out (stok sudah keluar)',
+          );
+        }
+      }
+
+      await this.prisma.$transaction(async (tx) => {
+        await tx.salesKanvasPlan.update({
+          where: { id },
+          data: {
+            status: dto.status,
+            ...(dto.status === 'BATAL' ? { cancelled_at: new Date() } : {}),
+          },
+        });
+
+        // Kasbon mengikuti plan: disetujui -> ACC, dibatalkan -> BATAL.
+        const kasbonData =
+          dto.status === 'DISETUJUI'
+            ? { status: 'ACC' as const, approved_at: new Date() }
+            : dto.status === 'BATAL'
+              ? { status: 'BATAL' as const }
+              : null;
+
+        if (kasbonData) {
+          const where = {
+            sales_kanvas_plan_id: id,
+            status: { not: 'BATAL' as const },
+          };
+          await tx.salesKanvasKasbonProduct.updateMany({
+            where,
+            data: kasbonData,
+          });
+          await tx.salesKanvasKasbonOperational.updateMany({
+            where,
+            data: kasbonData,
+          });
+        }
+      });
+
+      return this.findOne(id);
+    }
+
+    // Ubah data: hanya saat masih Draft.
+    if (current.status !== 'DRAFT') {
+      throw new BadRequestException(
+        'Plan hanya dapat diubah saat berstatus Draft',
+      );
+    }
+
+    await this.validateRefs(dto);
+    this.assertDates(
+      dto.departure_date ?? current.departure_date,
+      dto.return_date !== undefined ? dto.return_date : current.return_date,
+    );
+    await this.assertAvailable({
+      employee_id: dto.employee_id ?? current.employee_id,
+      vehicle_id:
+        dto.vehicle_id !== undefined ? dto.vehicle_id : current.vehicle_id,
+      departure: dto.departure_date ?? current.departure_date,
+      ret: dto.return_date !== undefined ? dto.return_date : current.return_date,
+      excludeId: id,
+    });
+
+    const updateData: {
+      employee_id?: number;
+      vehicle_id?: number | null;
+      market_area_id?: number | null;
+      departure_date?: Date;
+      return_date?: Date | null;
+    } = {};
+
+    if (dto.employee_id !== undefined) updateData.employee_id = dto.employee_id;
+    if (dto.vehicle_id !== undefined) updateData.vehicle_id = dto.vehicle_id;
+    if (dto.market_area_id !== undefined) {
+      updateData.market_area_id = dto.market_area_id;
+    }
+    if (dto.departure_date !== undefined) {
+      updateData.departure_date = dto.departure_date;
+    }
+    if (dto.return_date !== undefined) updateData.return_date = dto.return_date;
+
+    const outletIds = dto.outlet_ids;
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.salesKanvasPlan.update({ where: { id }, data: updateData });
+
+      if (outletIds !== undefined) {
+        await tx.salesKanvasPlanOutlet.deleteMany({
+          where: { sales_kanvas_plan_id: id },
+        });
+
+        if (outletIds.length > 0) {
+          await tx.salesKanvasPlanOutlet.createMany({
+            data: outletIds.map((outletId: number) => ({
+              sales_kanvas_plan_id: id,
+              outlet_id: outletId,
+            })),
+          });
+        }
+      }
+
+      return tx.salesKanvasPlan.findUnique({
+        where: { id },
+        include: PLAN_INCLUDE,
+      });
+    });
+  }
+}
+
+===== .\src\plan\sales-kanvas-plans\dto\create-sales-kanvas-plan.dto.ts =====
+
+import { z } from 'zod';
+import { createZodDto } from 'nestjs-zod';
+
+export const createSalesKanvasPlanSchema = z
+  .object({
+    employee_id: z.number().int().positive(),
+    vehicle_id: z.number().int().positive().nullish(),
+    market_area_id: z.number().int().positive().nullish(),
+    departure_date: z.coerce.date(),
+    // null / kosong = belum ditentukan (jangan di-coerce jadi 1970)
+    return_date: z.preprocess(
+      (v) => (v === null || v === '' ? null : v),
+      z.coerce.date().nullish(),
+    ),
+    outlet_ids: z.array(z.number().int().positive()).optional(),
+  })
+  .strict();
+
+export class CreateSalesKanvasPlanDto extends createZodDto(
+  createSalesKanvasPlanSchema,
+) {}
+
+===== .\src\plan\sales-kanvas-plans\dto\update-sales-kanvas-plan.dto.ts =====
+
+import { z } from 'zod';
+import { createZodDto } from 'nestjs-zod';
+import { createSalesKanvasPlanSchema } from './create-sales-kanvas-plan.dto';
+
+export const updateSalesKanvasPlanSchema = createSalesKanvasPlanSchema
+  .partial()
+  .extend({
+    // Perpindahan status; aturan alurnya dicek di service
+    status: z.enum(['DISETUJUI', 'LOADING', 'KOMPLIT', 'BATAL']).optional(),
+  });
+
+export class UpdateSalesKanvasPlanDto extends createZodDto(
+  updateSalesKanvasPlanSchema,
+) {}
+
+===== .\src\auth\auth.constants.ts =====
+
+export const AUTH = {
+  INVALID_CREDENTIALS: "Invalid credentials",
+  ACCOUNT_DISABLED: "Account is not active",
+  LOGIN_SUCCESSFUL: "Login successful",
+  LOGOUT_SUCCESSFUL: "Logout successful",
+  TOKEN_REFRESHED: "Token refreshed",
+  INVALID_REFRESH_TOKEN: "Invalid or expired refresh token",
+  REFRESH_TOKEN_REUSE_DETECTED: "Refresh token reuse detected",
+  USER_NOT_FOUND: "User not found",
+};
+
+
+===== .\src\auth\auth.controller.ts =====
+
+
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from "@nestjs/common";
+
+import { AuthService } from "./auth.service";
+import { LoginDto } from "./dto/login.dto";
+import { RefreshDto } from "./dto/refresh.dto";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { CurrentUser } from "./decorators/current-user.decorator";
+import { ResponseMessage } from "../common/decorators/response-message.decorator";
+import { Authenticated } from "../common/decorators/authenticated.decorator";
+import { PermissionsGuard } from "../common/guards/permission.guard";
+import { AuthenticatedUser } from "../common/interfaces/authenticated-user.interface";
+import { AUTH } from "./auth.constants";
+
+@Controller("auth")
+export class AuthController {
+  constructor(
+    private readonly authService: AuthService,
+  ) {}
+
+  /**
+   * Login menggunakan username dan password.
+   */
+  @Post("login")
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage(AUTH.LOGIN_SUCCESSFUL)
+  async login(@Body() dto: LoginDto) {
+    // Debug sementara: jangan mencetak password asli.
+    console.log("[CONTROLLER LOGIN DEBUG]", {
+      bodyAda: Boolean(dto),
+      username: dto?.username ?? "(undefined)",
+      passwordTerisi: Boolean(dto?.password),
+    });
+
+    const { user, accessToken, refreshToken } =
+      await this.authService.login(dto);
+
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      user: toSafeUser(user),
+    };
+  }
+
+  /**
+   * Memperbarui access token menggunakan refresh token.
+   */
+  @Post("refresh")
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage(AUTH.TOKEN_REFRESHED)
+  async refresh(@Body() dto: RefreshDto) {
+    const { accessToken, refreshToken } =
+      await this.authService.refreshToken(
+        dto.refresh_token,
+      );
+
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    };
+  }
+
+  /**
+   * Logout dan mencabut refresh token.
+   */
+  @Post("logout")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Authenticated()
+  @ResponseMessage(AUTH.LOGOUT_SUCCESSFUL)
+  async logout(
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.authService.logout(user.id);
+
+    return null;
+  }
+
+  /**
+   * Mengambil data user yang sedang login.
+   */
+  @Get("me")
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Authenticated()
+  me(@CurrentUser() user: AuthenticatedUser) {
+    return toSafeUser(user);
+  }
+}
+
+/**
+ * Menghapus informasi sensitif dari respons user.
+ */
+function toSafeUser(user: AuthenticatedUser) {
+  const {
+    password: _password,
+    refresh_token: _refreshToken,
+    role,
+    ...safeUser
+  } = user;
+
+  return {
+    ...safeUser,
+    role: {
+      id: role.id,
+      name: role.name,
+    },
+    permissions: role.permissionRoles.map(
+      (permissionRole) => ({
+        id: permissionRole.permission.id,
+        name: permissionRole.permission.name,
+      }),
+    ),
+  };
+}
+
+
+===== .\src\auth\auth.module.ts =====
+
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { JwtStrategy } from './strategies/jwt.strategy';
+
+@Module({
+imports: [
+ConfigModule,
+PassportModule,
+JwtModule.registerAsync({
+imports: [ConfigModule],
+inject: [ConfigService],
+useFactory: (configService: ConfigService) => {
+const secret = configService.get<string>('JWT_SECRET');
+
+    if (!secret) {
+      throw new Error('JWT_SECRET belum diatur di file .env');
+    }
+
+    return {
+      secret,
+      signOptions: {
+        expiresIn: '15m' as const,
+      },
+    };
+  },
+}),
+
+],
+controllers: [AuthController],
+providers: [AuthService, JwtStrategy],
+})
+export class AuthModule {}
+
+===== .\src\auth\auth.service.ts =====
+
+
+import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import * as bcrypt from "bcrypt";
+import { StringValue } from "ms";
+
+import { PrismaService } from "../prisma/prisma.service";
+import { LoginDto } from "./dto/login.dto";
+import { AUTH } from "./auth.constants";
+import { AuthenticatedUser } from "../common/interfaces/authenticated-user.interface";
+
+const WITH_ROLE_PERMISSIONS = {
+  role: {
+    include: {
+      permissionRoles: {
+        include: {
+          permission: true,
+        },
+      },
+    },
+  },
+} as const;
+
+interface RefreshPayload {
+  sub: number;
+  username: string;
+  type?: string;
+}
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+  ) {}
+
+  /**
+   * Login menggunakan username dan password.
+   */
+  async login(dto: LoginDto) {
+    const username =
+      typeof dto?.username === "string"
+        ? dto.username.trim()
+        : "";
+
+    const password =
+      typeof dto?.password === "string"
+        ? dto.password
+        : "";
+
+    // Debug sementara, tanpa mencetak password asli.
+    console.log("[LOGIN DEBUG]", {
+      username: username || "(kosong)",
+      usernameTerisi: Boolean(username),
+      passwordTerisi: Boolean(password),
+    });
+
+    if (!username || !password) {
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { username },
+      include: WITH_ROLE_PERMISSIONS,
+    });
+
+    if (!user) {
+      console.warn(
+        `[LOGIN DEBUG] Username "${username}" tidak ditemukan.`,
+      );
+
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
+    }
+
+    if (!user.is_active) {
+      console.warn(
+        `[LOGIN DEBUG] Akun "${username}" tidak aktif.`,
+      );
+
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
+    }
+
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      user.password,
+    );
+
+    console.log("[LOGIN DEBUG] Password valid:", isPasswordValid);
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
+    }
+
+    const accessToken = await this.jwtService.signAsync({
+      sub: user.id,
+      username: user.username,
+    });
+
+    const refreshToken = await this.jwtService.signAsync(
+      {
+        sub: user.id,
+        username: user.username,
+        type: "refresh",
+      },
+      {
+        secret: process.env.JWT_REFRESH_SECRET,
+        expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ||
+          "30d") as StringValue,
+      },
+    );
+
+    // Simpan hash refresh token untuk validasi dan pencabutan token.
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        refresh_token: await bcrypt.hash(refreshToken, 10),
+      },
+    });
+
+    return {
+      user,
+      accessToken,
+      refreshToken,
+    };
+  }
+
+  /**
+   * Membuat access token dan refresh token baru.
+   */
+  async refreshToken(token: string) {
+    if (!token || !process.env.JWT_REFRESH_SECRET) {
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
+    }
+
+    let payload: RefreshPayload;
+
+    try {
+      payload = await this.jwtService.verifyAsync<RefreshPayload>(
+        token,
+        {
+          secret: process.env.JWT_REFRESH_SECRET,
+        },
+      );
+    } catch {
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
+    }
+
+    if (!payload.sub || payload.type !== "refresh") {
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      include: WITH_ROLE_PERMISSIONS,
+    });
+
+    if (!user || !user.is_active || !user.refresh_token) {
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
+    }
+
+    const isRefreshTokenValid = await bcrypt.compare(
+      token,
+      user.refresh_token,
+    );
+
+    if (!isRefreshTokenValid) {
+      // Cabut token tersimpan jika token yang dikirim tidak cocok.
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { refresh_token: null },
+      });
+
+      throw new UnauthorizedException(
+        AUTH.INVALID_CREDENTIALS,
+      );
+    }
+
+    const accessToken = await this.jwtService.signAsync({
+      sub: user.id,
+      username: user.username,
+    });
+
+    const refreshToken = await this.jwtService.signAsync(
+      {
+        sub: user.id,
+        username: user.username,
+        type: "refresh",
+      },
+      {
+        secret: process.env.JWT_REFRESH_SECRET,
+        expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN ||
+          "30d") as StringValue,
+      },
+    );
+
+    // Rotasi refresh token: token lama diganti dengan hash token baru.
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        refresh_token: await bcrypt.hash(refreshToken, 10),
+      },
+    });
+
+    return {
+      user,
+      accessToken,
+      refreshToken,
+    };
+  }
+
+  /**
+   * Logout dan cabut refresh token milik user.
+   */
+  async logout(userId: number) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        refresh_token: null,
+      },
+    });
+
+    return {
+      message: "Logout berhasil",
+    };
+  }
+
+  /**
+   * Validasi user berdasarkan ID dari access token.
+   */
+  async validateUser(
+    userId: number,
+  ): Promise<AuthenticatedUser | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: WITH_ROLE_PERMISSIONS,
+    });
+
+    if (!user || !user.is_active) {
+      return null;
+    }
+
+    return user as unknown as AuthenticatedUser;
+  }
+}
+
+
+===== .\src\auth\decorators\current-user.decorator.ts =====
+
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { AuthenticatedUser } from '../../common/interfaces/authenticated-user.interface';
+
+export const CurrentUser = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext): AuthenticatedUser => {
+    return ctx.switchToHttp().getRequest().user;
+  },
+);
+
+
+===== .\src\auth\dto\login.dto.ts =====
+
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
+
+export const loginSchema = z
+  .object({
+    username: z.string().min(1, 'Username wajib diisi'),
+    password: z.string().min(1, 'Password wajib diisi'),
+  })
+  .strict();
+
+export class LoginDto extends createZodDto(loginSchema) {}
+
+
+===== .\src\auth\dto\refresh.dto.ts =====
+
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
+
+export const refreshSchema = z
+  .object({
+    refresh_token: z.string().min(1, 'Refresh token wajib diisi'),
+  })
+  .strict();
+
+export class RefreshDto extends createZodDto(refreshSchema) {}
+
+
+===== .\src\auth\guards\jwt-auth.guard.ts =====
+
+import { Injectable } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {}
+
+
+===== .\src\auth\strategies\jwt.strategy.ts =====
+
+import { Injectable } from "@nestjs/common";
+import { PassportStrategy } from "@nestjs/passport";
+import { ExtractJwt, Strategy } from "passport-jwt";
+import { AuthService } from "../auth.service";
+
+interface JwtPayload {
+  sub: number;
+  username?: string;
+}
+
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  constructor(private authService: AuthService) {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ignoreExpiration: false,
+      secretOrKey: process.env.JWT_SECRET as string,
+    });
+  }
+
+  validate(payload: JwtPayload) {
+    return this.authService.validateUser(payload.sub);
+  }
+}
+
+
+===== .\src\access\permissions\permissions.controller.ts =====
+
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PermissionsService } from './permissions.service';
+import { CreatePermissionDto } from './dto/create-permissions.dto';
+import { UpdatePermissionDto } from './dto/update-permissions.dto';
+
+@Controller('permissions')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class PermissionsController {
+  constructor(private readonly permissionsService: PermissionsService) {}
+
+  @Get()
+  @RequirePermission('user:read')
+  findAll() {
+    return this.permissionsService.findAll();
+  }
+
+  @Post()
+  @RequirePermission('permission:write')
+  create(@Body() dto: CreatePermissionDto) {
+    return this.permissionsService.create(dto);
+  }
+
+  @Patch(':id')
+  @RequirePermission('permission:write')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdatePermissionDto,
+  ) {
+    return this.permissionsService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @RequirePermission('permission:write')
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.permissionsService.remove(id);
+  }
+}
+
+===== .\src\access\permissions\permissions.module.ts =====
+
+import { Module } from '@nestjs/common';
+import { PermissionsController } from './permissions.controller';
+import { PermissionsService } from './permissions.service';
+
+@Module({
+  controllers: [PermissionsController],
+  providers: [PermissionsService],
+})
+export class PermissionsModule {}
+
+===== .\src\access\permissions\permissions.service.ts =====
+
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CreatePermissionDto } from './dto/create-permissions.dto';
+import { UpdatePermissionDto } from './dto/update-permissions.dto';
+
+@Injectable()
+export class PermissionsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async findAll() {
+    const perms = await this.prisma.permission.findMany({
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { permissionRoles: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return perms.map(({ _count, ...p }) => ({
+      ...p,
+      role_count: _count.permissionRoles,
+    }));
+  }
+
+  async create(dto: CreatePermissionDto) {
+    try {
+      return await this.prisma.permission.create({
+        data: { name: dto.name },
+        select: { id: true, name: true },
+      });
+    } catch (e) {
+      this.rethrowUnique(e);
+    }
+  }
+
+  async update(id: number, dto: UpdatePermissionDto) {
+    const existing = await this.getExisting(id);
+    if (existing.name === dto.name) return existing;
+
+    try {
+      const updated = await this.prisma.permission.update({
+        where: { id },
+        data: { name: dto.name },
+        select: { id: true, name: true },
+      });
+      // Nama izin berubah -> user yang terdampak harus login ulang.
+      await this.prisma.user.updateMany({
+        where: { role: { permissionRoles: { some: { permission_id: id } } } },
+        data: { refresh_token: null },
+      });
+      return updated;
+    } catch (e) {
+      this.rethrowUnique(e);
+    }
+  }
+
+  async remove(id: number) {
+    const perm = await this.prisma.permission.findUnique({
+      where: { id },
+      select: { id: true, _count: { select: { permissionRoles: true } } },
+    });
+    if (!perm) throw new NotFoundException('Permission tidak ditemukan');
+    if (perm._count.permissionRoles > 0) {
+      throw new ConflictException(
+        `Permission masih dipakai ${perm._count.permissionRoles} role. Lepaskan dari role terlebih dulu.`,
+      );
+    }
+
+    await this.prisma.permission.delete({ where: { id } });
+    return { message: 'Permission berhasil dihapus' };
+  }
+
+  // ---------- helpers ----------
+
+  private async getExisting(id: number) {
+    const perm = await this.prisma.permission.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    });
+    if (!perm) throw new NotFoundException('Permission tidak ditemukan');
+    return perm;
+  }
+
+  private rethrowUnique(e: unknown): never {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === 'P2002'
+    ) {
+      throw new ConflictException('Nama permission sudah dipakai');
+    }
+    throw e;
+  }
+}
+
+===== .\src\access\permissions\dto\create-permissions.dto.ts =====
+
+import { Transform } from 'class-transformer';
+import { IsString, Matches, MaxLength } from 'class-validator';
+
+/** Format: resource:action, contoh "product:write" atau "product:*". */
+export const PERMISSION_NAME = /^[a-z0-9-]+(:[a-z0-9*-]+){1,2}$/;
+
+export class CreatePermissionDto {
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  @IsString()
+  @MaxLength(100)
+  @Matches(PERMISSION_NAME, {
+    message: 'Format permission: resource:action, contoh product:write',
+  })
+  name!: string;
+}
+
+===== .\src\access\permissions\dto\update-permissions.dto.ts =====
+
+import { CreatePermissionDto } from './create-permissions.dto';
+
+export class UpdatePermissionDto extends CreatePermissionDto {}
