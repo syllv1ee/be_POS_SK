@@ -29,6 +29,9 @@ const ACCESS_PERMISSIONS = [
   "user:write",
   "role:write",
   "permission:write",
+  "sales-kanvas-plan:approve",
+  "kasbon-product:cancel-loading",
+  "stock:read",
 ];
 
 // Transaksi kanvas: boleh dikerjakan role Sales.

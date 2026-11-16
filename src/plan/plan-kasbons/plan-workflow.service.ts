@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StockCoreService } from '../../stock/stock-core/stock-core.service';
+import { CompletePlanDto } from './dto/complete-plan.dto';
 
 const SERIALIZABLE = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -16,13 +18,17 @@ const ONLOADING_MSG =
 /**
  * Alur plan:
  *   Sales buat plan (DRAFT) -> SPV setujui (DISETUJUI) -> SPV buat kasbon (DRAFT)
- *   -> Gudang Product Out (bon ONLOADING, plan LOADING) -> SPV tandai KOMPLIT.
+ *   -> Gudang Product Out (bon ONLOADING, plan LOADING, stok_sales bertambah)
+ *   -> SPV tandai KOMPLIT (sisa stok_sales kembali ke gudang).
  * Batal: SPV selama belum onloading, Gudang jika sudah onloading.
  * Revisi = batalkan plan, buat plan baru, buat kasbon baru.
  */
 @Injectable()
 export class PlanWorkflowService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stockCore: StockCoreService,
+  ) {}
 
   private async getPlan(tx: Prisma.TransactionClient, id: number) {
     const plan = await tx.salesKanvasPlan.findUnique({ where: { id } });
@@ -94,24 +100,60 @@ export class PlanWorkflowService {
     }
   }
 
-  /** SPV: tandai plan selesai. */
-  async complete(id: number) {
-    const done = await this.prisma.salesKanvasPlan.updateMany({
-      where: { id, status: 'LOADING' },
-      data: { status: 'KOMPLIT' },
-    });
-    if (done.count === 0) {
-      const plan = await this.getPlan(this.prisma, id);
-      throw new BadRequestException(
-        `Plan berstatus ${plan.status}, hanya plan Loading yang bisa ditandai Komplit`,
-      );
+  /**
+   * SPV: tandai plan selesai. Sisa stok_sales kembali ke gudang lewat
+   * Product In (sumber SALES_KANVAS) dalam transaksi yang sama.
+   */
+  async complete(id: number, dto: CompletePlanDto = {}, userId?: number) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const done = await tx.salesKanvasPlan.updateMany({
+          where: { id, status: 'LOADING' },
+          data: { status: 'KOMPLIT' },
+        });
+        if (done.count === 0) {
+          const plan = await this.getPlan(tx, id);
+          throw new BadRequestException(
+            `Plan berstatus ${plan.status}, hanya plan Loading yang bisa ditandai Komplit`,
+          );
+        }
+
+        // Gudang tujuan: input, atau gudang yang mengeluarkan barang plan ini.
+        let warehouseId = dto.warehouse_id;
+        if (!warehouseId) {
+          const out = await tx.productOut.findFirst({
+            where: { sales_kanvas_plan_id: id },
+            orderBy: { id: 'asc' },
+            select: { warehouse_id: true },
+          });
+          warehouseId = out?.warehouse_id;
+        }
+        if (!warehouseId) {
+          throw new BadRequestException(
+            'Gudang tujuan pengembalian sisa barang wajib diisi',
+          );
+        }
+
+        const returned = await this.stockCore.returnLeftovers(tx, {
+          plan_id: id,
+          warehouse_id: warehouseId,
+          user_id: userId,
+        });
+
+        const plan = await tx.salesKanvasPlan.findUniqueOrThrow({
+          where: { id },
+        });
+        return { ...plan, returned };
+      }, SERIALIZABLE);
+    } catch (e) {
+      this.handle(e);
     }
-    return this.prisma.salesKanvasPlan.findUnique({ where: { id } });
   }
 
   /**
    * Gudang: batalkan loading (bon sudah ONLOADING). Product Out plan ini
-   * dihapus sehingga stok kembali, lalu plan dan kasbon menjadi BATAL.
+   * dihapus sehingga stok gudang kembali dan stok sales ditarik,
+   * lalu plan dan kasbon menjadi BATAL.
    */
   async cancelLoading(id: number) {
     try {
@@ -147,6 +189,21 @@ export class PlanWorkflowService {
           select: { id: true },
         });
         const ids = outs.map((o) => o.id);
+
+        // Tarik kembali barang dari stok sales sebelum Product Out dihapus.
+        const outDetails = await tx.productOutDetail.findMany({
+          where: { product_out_id: { in: ids } },
+          select: { product_id: true, batch: true, qty: true },
+        });
+        for (const d of outDetails) {
+          await this.stockCore.subSales(
+            tx,
+            id,
+            d.product_id,
+            d.batch as string,
+            d.qty,
+          );
+        }
 
         await tx.batchMutation.deleteMany({
           where: { productOutDetail: { product_out_id: { in: ids } } },

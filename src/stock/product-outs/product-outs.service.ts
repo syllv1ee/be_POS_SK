@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { docPrefix, nextDocNo } from '../../common/utils/doc-number.util';
 import { SourceTypesService } from '../source-types/source-types.service';
+import { StockCoreService } from '../stock-core/stock-core.service';
 
 import { CreateProductOutDto } from './dto/create-product-out.dto';
 import { UpdateProductOutDto } from './dto/update-product-out.dto';
@@ -35,6 +36,7 @@ export class ProductOutsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sourceTypes: SourceTypesService,
+    private readonly stockCore: StockCoreService,
   ) {}
 
   /** Tanggal dokumen tidak boleh lebih dari hari ini (zona waktu Jakarta). */
@@ -51,8 +53,8 @@ export class ProductOutsService {
 
   /**
    * Gudang mengeluarkan barang. Stok langsung berkurang (FEFO otomatis).
-   * Untuk Sales Kanvas: kasbon produk -> ONLOADING dan plan -> LOADING
-   * dalam transaction yang sama.
+   * Untuk Sales Kanvas: stok_sales bertambah, kasbon produk -> ONLOADING
+   * dan plan -> LOADING dalam transaction yang sama.
    */
   async create(dto: CreateProductOutDto, userId?: number) {
     const { details, ...header } = dto;
@@ -131,6 +133,19 @@ export class ProductOutsService {
           });
 
           if (isKanvas) {
+            // Barang pindah dari gudang ke stok sales (per batch).
+            for (const detail of created.details) {
+              await this.stockCore.addSales(tx, {
+                plan_id: header.sales_kanvas_plan_id!,
+                product_id: detail.product_id,
+                batch: detail.batch as string,
+                expired_date: expiryOf.get(
+                  `${detail.product_id}|${detail.batch}`,
+                ) as Date,
+                qty: detail.qty,
+              });
+            }
+
             await tx.salesKanvasKasbonProduct.update({
               where: { id: header.sales_kanvas_kasbon_product_id! },
               data: { status: 'ONLOADING' },
@@ -351,8 +366,8 @@ export class ProductOutsService {
 
   /**
    * Gudang membatalkan pengeluaran (setelah dihubungi supervisor):
-   * stok kembali, kasbon produk kembali Draft, plan kembali Disetujui.
-   * Supervisor lalu bisa membatalkan plan dan membuat plan baru.
+   * stok kembali, stok sales berkurang, kasbon produk kembali Draft,
+   * plan kembali Disetujui.
    * Ditolak kalau plan sudah punya invoice atau sudah Komplit.
    */
   async remove(id: number) {
@@ -380,6 +395,26 @@ export class ProductOutsService {
             if (invoices > 0) {
               throw new BadRequestException(
                 'Product Out tidak dapat dihapus karena plan sudah punya invoice penjualan',
+              );
+            }
+          }
+
+          // Pengeluaran kanvas: tarik kembali barang dari stok sales.
+          if (
+            current.sales_kanvas_plan_id &&
+            current.sales_kanvas_kasbon_product_id
+          ) {
+            const outDetails = await tx.productOutDetail.findMany({
+              where: { product_out_id: id },
+              select: { product_id: true, batch: true, qty: true },
+            });
+            for (const d of outDetails) {
+              await this.stockCore.subSales(
+                tx,
+                current.sales_kanvas_plan_id,
+                d.product_id,
+                d.batch as string,
+                d.qty,
               );
             }
           }

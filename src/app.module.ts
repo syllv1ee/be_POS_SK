@@ -27,6 +27,7 @@ import { ReceivableCardsModule } from './sales/receivable-cards/receivable-cards
 import { BatchMutationsModule } from './stock/batch-mutations/batch-mutations.module';
 import { ProductOutsModule } from './stock/product-outs/product-outs.module';
 import { ProductInsModule } from './stock/product-ins/product-ins.module';
+import { StockCoreModule } from './stock/stock-core/stock-core.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { ProductInsModule } from './stock/product-ins/product-ins.module';
     BatchMutationsModule,
     ProductOutsModule,
     ProductInsModule,
+    StockCoreModule,
   ],
   providers: [{ provide: APP_INTERCEPTOR, useClass: ResponseInterceptor }],
 })
