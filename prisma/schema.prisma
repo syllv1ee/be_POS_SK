@@ -74,12 +74,13 @@ model Employee {
 }
 
 model MarketArea {
-  id               Int               @id @default(autoincrement())
-  code             String?           @unique @map("kode")
-  name             String            @map("nama")
-  description      String?           @map("keterangan")
-  outlets          Outlet[]
-  salesKanvasPlans SalesKanvasPlan[]
+  id                Int                @id @default(autoincrement())
+  code              String?            @unique @map("kode")
+  name              String             @map("nama")
+  description       String?            @map("keterangan")
+  outlets           Outlet[]
+  salesKanvasPlans  SalesKanvasPlan[]
+  salesKanvasVisits SalesKanvasVisit[]
 
   @@map("wilayah_kanvas")
 }
@@ -460,6 +461,27 @@ model SalesStock {
 
   @@unique([sales_kanvas_plan_id, product_id, batch])
   @@map("stok_sales")
+}
+
+model SalesKanvasVisit {
+  id              Int      @id @default(autoincrement())
+  store_name      String   @map("nama_toko")
+  visit_date      DateTime @map("tanggal_kunjungan") @db.Date
+  market_area_id  Int      @map("id_wilayah_kanvas")
+  note            String?  @map("catatan")
+  status          String   @default("DIRENCANAKAN")
+  idempotency_key String?  @unique @map("idempotency_key")
+  user_id         Int      @map("id_user")
+  ip              String
+  created_at      DateTime @default(now()) @map("created_at")
+  updated_at      DateTime @updatedAt @map("updated_at")
+
+  marketArea MarketArea @relation(fields: [market_area_id], references: [id])
+
+  @@index([visit_date])
+  @@index([market_area_id])
+  @@index([status])
+  @@map("kunjungan_kanvas")
 }
 
 enum KasbonStatus {

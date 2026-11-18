@@ -35,6 +35,7 @@ const ACCESS_PERMISSIONS = [
 ];
 
 // Transaksi kanvas: boleh dikerjakan role Sales.
+
 const TRANSACTION_PERMISSIONS = [
   "sales-kanvas-plan:write",
   "kasbon-product:write",
@@ -44,7 +45,12 @@ const TRANSACTION_PERMISSIONS = [
   "invoice-outlet:write",
   "invoice-payment:write",
   "invoice-return:write",
+
+  // Visit
+  "visit:read",
+  "visit:write",
 ];
+
 
 // Peta role -> daftar izin. Tambah izin baru di sini.
 // Super Admin tidak perlu didaftarkan (bypass di PermissionsGuard).
